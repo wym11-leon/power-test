@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>权力拓扑：隐性应力法则测试 (完整版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        /* --- 全局基础与暗房氛围 --- */
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { 
+            background-color: #050505; color: #ececec; 
+            font-family: -apple-system, 'PingFang SC', sans-serif; 
+            height: 100vh; overflow: hidden; position: relative;
+        }
+        .page { 
+            display: none; flex-direction: column; align-items: center; justify-content: center; 
+            height: 100%; width: 100%; position: absolute; top: 0; left: 0; 
+        }
+        .active-page { display: flex; }
+
+        .ambient-light-red {
+            position: absolute; top: -10%; left: -10%; width: 50vw; height: 50vw;
+            background: radial-gradient(circle, rgba(139, 0, 0, 0.15) 0%, rgba(5, 5, 5, 0) 70%); z-index: 1; pointer-events: none;
+        }
+        .ambient-light-blue {
+            position: absolute; bottom: -10%; right: -10%; width: 50vw; height: 50vw;
+            background: radial-gradient(circle, rgba(25, 25, 112, 0.15) 0%, rgba(5, 5, 5, 0) 70%); z-index: 1; pointer-events: none;
+        }
+
+        /* --- 入口页 --- */
+        .landing-container { max-width: 420px; padding: 0 30px; z-index: 10; text-align: left; }
+        .landing-container h1 { font-size: 2.2rem; font-weight: 300; letter-spacing: 2px; margin-bottom: 24px; }
+        .landing-container h1 span { display: block; font-size: 1.1rem; font-weight: 600; color: #8b0000; letter-spacing: 6px; margin-top: 8px; }
+        .description-box { background: rgba(255,255,255,0.02); border-left: 2px solid #8b0000; padding: 16px 20px; margin-bottom: 50px; }
+        .description-box p { color: #888; font-size: 0.85rem; line-height: 1.7; letter-spacing: 1px; }
+        .start-btn { 
+            background: rgba(255,255,255,0.03); color: #ececec; border: 1px solid rgba(255,255,255,0.15); 
+            padding: 16px 0; width: 100%; font-size: 0.95rem; cursor: pointer; letter-spacing: 4px; 
+            animation: pulse 3s infinite; backdrop-filter: blur(5px); transition: 0.3s;
+        }
+        .start-btn:hover { background: rgba(139,0,0,0.1); border-color: #8b0000; }
+        @keyframes pulse { 0%, 100% { border-color: rgba(255,255,255,0.1); } 50% { border-color: rgba(139,0,0,0.4); } }
+
+        /* --- 答题页 (新增返回按钮与多选样式) --- */
+        .q-container { max-width: 500px; width: 100%; height: 100%; padding: 40px 30px; z-index: 10; display: flex; flex-direction: column; }
+        .progress-header { width: 100%; display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: #666; margin-bottom: 30px; position: relative; }
+        
+        /* 返回上一题按钮 */
+        .back-btn { 
+            position: absolute; left: 0; top: -35px; color: #888; font-size: 0.85rem; 
+            cursor: pointer; letter-spacing: 1px; display: flex; align-items: center; transition: 0.3s;
+        }
+        .back-btn:hover { color: #fff; }
+        .back-btn.hidden { opacity: 0; pointer-events: none; }
+
+        .progress-bar-container { flex-grow: 1; height: 2px; background: #222; margin: 0 15px; position: relative; }
+        .progress-bar-fill { position: absolute; top: 0; left: 0; height: 100%; background: #8b0000; transition: width 0.4s ease; box-shadow: 0 0 8px rgba(139,0,0,0.8); }
+        .question-title { font-size: 1.1rem; line-height: 1.6; font-weight: 300; margin-bottom: 25px; flex-shrink: 0; }
+        .question-title span { color: #888; font-size: 0.8rem; display: block; margin-bottom: 10px; letter-spacing: 2px; }
+        .question-title .multi-tag { color: #8b0000; font-size: 0.75rem; border: 1px solid #8b0000; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
+        
+        .options-wrapper { flex-grow: 1; overflow-y: auto; padding-bottom: 20px; }
+        .options-wrapper::-webkit-scrollbar { display: none; }
+        .option-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 15px 20px; border-radius: 6px; font-size: 0.9rem; line-height: 1.5; color: #ccc; cursor: pointer; transition: 0.3s; margin-bottom: 12px; }
+        .option-card:hover { background: rgba(255,255,255,0.06); }
+        .option-card.active { background: rgba(139,0,0,0.1); border-color: #8b0000; color: #fff; transform: translateX(4px); box-shadow: inset 0 0 15px rgba(139,0,0,0.2); }
+
+        /* 多选题确认按钮 */
+        .confirm-btn {
+            background: linear-gradient(135deg, #8b0000 0%, #4a0000 100%); color: #fff; border: none; padding: 14px 0; width: 100%; font-size: 1rem; border-radius: 4px; cursor: pointer; letter-spacing: 4px; transition: 0.3s; margin-top: 10px; display: none;
+        }
+        .confirm-btn.show { display: block; animation: fadeIn 0.5s ease; }
+        .confirm-btn:active { transform: scale(0.98); }
+
+        /* --- 解析与结果页 --- */
+        .loading-text { font-family: 'Courier New', monospace; font-size: 1.2rem; color: #8b0000; letter-spacing: 3px; z-index: 10; text-align: center; }
+        .result-container { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; padding-top: 30px; z-index: 10; }
+        .tag-name { font-size: 2rem; font-weight: 300; color: #fff; margin-bottom: 10px; text-shadow: 0 0 10px rgba(255,255,255,0.2); }
+        .tag-name span { color: #8b0000; font-weight: 600; }
+        .short-desc { font-size: 0.85rem; color: #888; line-height: 1.6; max-width: 320px; text-align: center; }
+        #radar-chart { width: 100%; max-width: 400px; height: 350px; margin-top: 10px; }
+        
+        .paywall-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(5,5,5,0.7);
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 10px, rgba(20,20,20,0.9) 10px, rgba(20,20,20,0.9) 11px),
+                              repeating-linear-gradient(90deg, transparent, transparent 10px, rgba(20,20,20,0.9) 10px, rgba(20,20,20,0.9) 11px);
+            backdrop-filter: blur(20px) contrast(110%);
+            display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 20; transition: opacity 1.5s ease;
+        }
+        .paywall-text { font-size: 1.1rem; color: #fff; margin-bottom: 30px; text-align: center; letter-spacing: 2px; }
+        .paywall-text span { display: block; font-size: 0.75rem; color: #8b0000; margin-top: 8px; letter-spacing: 4px; }
+        .secret-input { width: 280px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 14px; font-size: 1.1rem; text-align: center; font-family: monospace; letter-spacing: 3px; border-radius: 4px; outline: none; margin-bottom: 20px; }
+        .secret-input:focus { border-color: #8b0000; background: rgba(139,0,0,0.1); }
+    </style>
+</head>
+<body>
+    <div class="ambient-light-red"></div>
+    <div class="ambient-light-blue"></div>
+
+    <!-- 1. 入口页 -->
+    <div id="page-landing" class="page active-page">
+        <div class="landing-container">
+            <h1>权力拓扑<span>隐性应力法则测试</span></h1>
+            <div class="description-box">
+                <p>亲密关系并非静态的避风港，而是一个充满拉扯的动态力学系统。本系统通过30组极端状态模拟，精准测算你的情绪阈值与精神内耗极值。</p>
+            </div>
+            <button class="start-btn" onclick="startTest()">初始化测算模型</button>
+        </div>
+    </div>
+
+    <!-- 2. 答题页 -->
+    <div id="page-question" class="page">
+        <div class="q-container">
+            <div class="progress-header">
+                <div class="back-btn hidden" id="btn-back" onclick="goBack()">‹ 返回上一题</div>
+                <span id="q-current-num">01</span>
+                <div class="progress-bar-container"><div class="progress-bar-fill" id="q-progress"></div></div>
+                <span id="q-total-num">30</span>
+            </div>
+            <div class="question-title" id="q-title-box">
+                <span id="q-tag">SCENE 01</span>
+                <div id="q-text">题目加载中...</div>
+            </div>
+            <div class="options-wrapper">
+                <div id="q-options" style="width: 100%;"></div>
+                <button class="confirm-btn" id="btn-confirm" onclick="confirmMultiSelect()">确认选择</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. 解析加载页 -->
+    <div id="page-loading" class="page">
+        <div class="loading-text" id="loading-txt">EXTRACTING...</div>
+        <div style="color: #666; font-size: 0.8rem; margin-top: 10px; letter-spacing: 1px;">正在深度解析潜意识应力轨迹</div>
+    </div>
+
+    <!-- 4. 结果页 (包含马赛克锁) -->
+    <div id="page-result" class="page">
+        <div class="result-container" id="real-result" style="opacity: 0; transform: translateY(20px); transition: 1s;">
+            <div class="tag-name" id="final-tag-title">计算中...</div>
+            <div class="short-desc" id="final-tag-desc">计算中...</div>
+            <div id="radar-chart"></div>
+        </div>
+        <!-- 密钥壁垒 -->
+        <div class="paywall-overlay" id="paywall">
+            <div class="paywall-text">核心应力数据已封存<span>Data Encrypted</span></div>
+            <input type="text" class="secret-input" id="secret-key" placeholder="输入专属密钥" maxlength="16" autocomplete="off" value="TEST-8888">
+            <button class="confirm-btn" style="display:block; width:280px;" id="verify-btn" onclick="verifyKey()">解密档案</button>
+        </div>
+    </div>
+
+    <script>
+        // --- 完整 30 题核心题库 (包含单选与多选，附带隐秘权重) ---
+        const questions = [
+            // 第一部分：极限场景测试
+            { type: 'single', tag: "PART 1 / 极限边界", text: "发现伴侣和一个极具魅力的异性有轻微的言语暧昧，你会：", options: [
+                { text: "A. 事后用更冷酷的姿态和更高价值碾压对方。", scores: { "魅力伪装": 5, "情绪主导": 2 } },
+                { text: "B. 愤怒且痛苦地当面对质，需要对方反复保证才能翻篇。", scores: { "安全感黑洞": 5, "情绪内耗": 2 } },
+                { text: "C. 表面不在意，私下疯狂调查对方的所有背景。", scores: { "领地意识": 5, "细节敏感": 2 } },
+                { text: "D. 瞬间感到索然无味，脑海里预演如何体面分手。", scores: { "抽离阈值": 5 } }
+            ]},
+            { type: 'multi', tag: "PART 1 / 极限边界", text: "面对充满未知和变数的异地/跨国恋，你脑海中真实的念头有（多选）：", options: [
+                { text: "A. 充满斗志期待顶峰相见，坚信自己能掌控大局。", scores: { "情绪主导": 4, "规则制定": 2 } },
+                { text: "B. 极度担忧对方的安全，害怕对方独自面对变故。", scores: { "分离焦虑": 4 } },
+                { text: "C. 经常脑补对方会遇到更好的人，自己会被取代。", scores: { "安全感黑洞": 4, "情绪内耗": 2 } },
+                { text: "D. 觉得是个完美契机，刚好可以保留独立空间。", scores: { "抽离阈值": 4 } },
+                { text: "E. 暗暗计算如果最终没有结果，我付出的成本如何止损。", scores: { "沉没成本": 4 } }
+            ]},
+            { type: 'single', tag: "PART 1 / 极限边界", text: "伴侣突然向你坦白一个深藏多年、有些不堪的秘密：", options: [
+                { text: "A. 感到负担和害怕，不知道自己能不能承接住。", scores: { "情绪内耗": 5, "托付心态": 2 } },
+                { text: "B. 觉得是绝佳机会，意味着TA彻底臣服，我掌握了软肋。", scores: { "边界入侵": 5, "狩猎直觉": 2 } },
+                { text: "C. 疯狂内耗，怀疑TA此时坦白的目的和隐藏的更多事情。", scores: { "细节敏感": 5, "安全感黑洞": 2 } },
+                { text: "D. 理性分析这个秘密是否会影响到我们未来的利益。", scores: { "规则制定": 5, "抽离阈值": 2 } }
+            ]},
+            { type: 'single', tag: "PART 1 / 极限边界", text: "凌晨三点处于高压疲惫状态，伴侣却因小事无理取闹：", options: [
+                { text: "A. 强压疲惫，用技巧和逻辑快速安抚，把控情绪节奏。", scores: { "情绪主导": 5, "狩猎直觉": 2 } },
+                { text: "B. 瞬间崩溃，陷入“为什么TA不能体谅我”的痛苦中。", scores: { "情绪内耗": 5, "细节敏感": 2 } },
+                { text: "C. 直接无视，关机睡觉，绝不惯着对方发脾气。", scores: { "抽离阈值": 5, "规则制定": 2 } },
+                { text: "D. 叹口气，强打精神低头认错，只求赶紧平息风波。", scores: { "底线退让": 5, "托付心态": 2 } }
+            ]},
+            { type: 'multi', tag: "PART 1 / 极限边界", text: "当对方一再打破你定下的原则底线时，你会（多选）：", options: [
+                { text: "A. 冷血执行惩罚机制，做好随时抽身离开的准备。", scores: { "抽离阈值": 4, "规则制定": 2 } },
+                { text: "B. 歇斯底里地爆发，用激烈言辞攻击唤醒TA的愧疚。", scores: { "情绪内耗": 4 } },
+                { text: "C. 在对方的软磨硬泡下，默默在心里把底线又降了一点。", scores: { "底线退让": 4, "沉没成本": 2 } },
+                { text: "D. 实施报复性行为（你做初一我做十五）试探对方。", scores: { "边界入侵": 4, "狩猎直觉": 2 } }
+            ]},
+            { type: 'single', tag: "PART 1 / 极限边界", text: "发现前任试图通过社交媒体重新联系你的现任：", options: [
+                { text: "A. 暗中在现任账号上留下极其明显的宣示主权痕迹。", scores: { "领地意识": 5, "情绪主导": 2 } },
+                { text: "B. 陷入极度自我怀疑，全方位对比自己和前任的条件。", scores: { "细节敏感": 5, "安全感黑洞": 2 } },
+                { text: "C. 直接用现任的账号强硬回击并拉黑对方。", scores: { "领地意识": 5, "边界入侵": 2 } },
+                { text: "D. 觉得是考验现任的好机会，躲在暗处观察TA如何回复。", scores: { "狩猎直觉": 5, "抽离阈值": 2 } }
+            ]},
+            { type: 'single', tag: "PART 1 / 极限边界", text: "发生极其激烈的争吵，对方夺门而出且彻夜未归：", options: [
+                { text: "A. 脑补一百种悲剧，连发几十条消息，想满世界找TA。", scores: { "分离焦虑": 5, "托付心态": 2 } },
+                { text: "B. 笃定对方明天一定会自己乖乖回来，安心睡觉。", scores: { "情绪主导": 5, "抽离阈值": 2 } },
+                { text: "C. 一夜未眠，不断复盘细节，分析自己哪句话说重了。", scores: { "情绪内耗": 5, "细节敏感": 2 } },
+                { text: "D. 默默将对方的行李打包好放在门口，做好破裂准备。", scores: { "抽离阈值": 5 } }
+            ]},
+            { type: 'single', tag: "PART 1 / 极限边界", text: "发现对方撒了谎，但动机似乎是为了保护你的情绪：", options: [
+                { text: "A. 绝不接受欺骗，谎言就是谎言，立刻重新评估关系。", scores: { "规则制定": 5, "抽离阈值": 2 } },
+                { text: "B. 理解TA的初衷，虽然心里有芥蒂但依然选择原谅。", scores: { "底线退让": 5, "托付心态": 2 } },
+                { text: "C. 表面原谅，但心里埋下怀疑的种子，不再百分百信任。", scores: { "细节敏感": 5, "安全感黑洞": 2 } },
+                { text: "D. 抓住把柄，在日后相处中以此为筹码要求对方让步。", scores: { "边界入侵": 5, "情绪主导": 2 } }
+            ]},
+            { type: 'multi', tag: "PART 1 / 极限边界", text: "关系遭遇严重现实危机，最不能接受对方（多选）：", options: [
+                { text: "A. 独自扛下一切，拒绝你的介入和帮助。", scores: { "规则制定": 4, "领地意识": 2 } },
+                { text: "B. 表现出动摇，甚至提出“为了你好分开吧”。", scores: { "分离焦虑": 4, "安全感黑洞": 2 } },
+                { text: "C. 盲目乐观无实际计划，只提供情绪安慰。", scores: { "情绪主导": 4 } },
+                { text: "D. 要求你牺牲个人的前途底线来共度难关。", scores: { "底线退让": 4 } }
+            ]},
+            { type: 'single', tag: "PART 1 / 极限边界", text: "在一段极其内耗痛苦的关系里，迟迟无法抽身是因为：", options: [
+                { text: "A. 不甘心付出了这么多，凭什么以我的失败告终？", scores: { "沉没成本": 5, "领地意识": 2 } },
+                { text: "B. 极度害怕孤独，比起争吵更害怕失去TA后的空虚。", scores: { "分离焦虑": 5, "托付心态": 2 } },
+                { text: "C. 沉迷于极限拉扯的刺激感，平淡安稳反而觉得无聊。", scores: { "边界入侵": 5, "情绪内耗": 2 } },
+                { text: "D. 有种救世主心态，觉得只有我能拯救TA。", scores: { "情绪主导": 5, "魅力伪装": 2 } }
+            ]},
+            { type: 'single', tag: "PART 1 / 极限边界", text: "伴侣遭遇重大挫折彻底崩溃大哭，你的第一感受是：", options: [
+                { text: "A. 保护欲被激发，想用尽一切资源帮TA摆脱困境。", scores: { "规则制定": 5, "情绪主导": 2 } },
+                { text: "B. 感到不知所措和窒息，极度害怕负面情绪吞噬自己。", scores: { "抽离阈值": 5, "安全感黑洞": 2 } },
+                { text: "C. 产生隐秘满足感，觉得TA此刻是最脆弱完全属于我的。", scores: { "边界入侵": 5, "领地意识": 2 } },
+                { text: "D. 理性评估这个挫折是否会导致TA价值贬损及对我的影响。", scores: { "抽离阈值": 5, "规则制定": 2 } }
+            ]},
+            { type: 'single', tag: "PART 1 / 极限边界", text: "如果你有随时查看对方手机且不被发现的绝对权力：", options: [
+                { text: "A. 绝对不看，我有极高的道德感和界限感。", scores: { "抽离阈值": 5, "规则制定": 2 } },
+                { text: "B. 每天像例行公事一样检查，这成了获取安全感的方式。", scores: { "安全感黑洞": 5, "细节敏感": 2 } },
+                { text: "C. 只在察觉到蛛丝马迹时，像侦探一样定向搜索。", scores: { "狩猎直觉": 5, "情绪内耗": 2 } },
+                { text: "D. 彻底掌控社交圈，暗中替TA删除我认为有威胁的人。", scores: { "边界入侵": 5, "领地意识": 2 } }
+            ]},
+            { type: 'multi', tag: "PART 1 / 极限边界", text: "感觉到对方热情不可挽回地消退时，你会（多选）：", options: [
+                { text: "A. 疯狂反思试图通过极度讨好来挽回局面。", scores: { "底线退让": 4, "安全感黑洞": 2 } },
+                { text: "B. 迅速启动防御，比对方更早冷淡夺回主动权。", scores: { "抽离阈值": 4, "情绪主导": 2 } },
+                { text: "C. 故意制造事端或暧昧，试图重新激起对方占有欲。", scores: { "魅力伪装": 4, "狩猎直觉": 2 } },
+                { text: "D. 悄悄转移情感寄托和物质资产，为分手做准备。", scores: { "抽离阈值": 4, "规则制定": 2 } }
+            ]},
+            { type: 'single', tag: "PART 1 / 极限边界", text: "对方突然提出极其无理甚至侵犯你私人空间的要求：", options: [
+                { text: "A. 毫不犹豫拒绝，并借此机会给对方立下严厉规矩。", scores: { "规则制定": 5, "情绪主导": 2 } },
+                { text: "B. 表面阳奉阴违假装答应，私下依然保持联系。", scores: { "魅力伪装": 5, "抽离阈值": 2 } },
+                { text: "C. 虽然痛苦纠结，但害怕失去对方最终流着泪妥协。", scores: { "底线退让": 5, "沉没成本": 2 } },
+                { text: "D. 用同样甚至更过分的要求反击回去。", scores: { "边界入侵": 5, "领地意识": 2 } }
+            ]},
+            { type: 'single', tag: "PART 1 / 极限边界", text: "如果必须在关系中做出选择，你潜意识更怕哪种结局：", options: [
+                { text: "A. 毫无保留交出一切，最后发现自己只是个备胎。", scores: { "沉没成本": 5, "安全感黑洞": 2 } },
+                { text: "B. 深爱的人因为我的冷酷和多疑，带着绝望离我而去。", scores: { "情绪内耗": 5, "细节敏感": 2 } },
+                { text: "C. 关系像一潭死水，两人没有激情只剩责任和束缚。", scores: { "抽离阈值": 5, "边界入侵": 2 } },
+                { text: "D. 彻底失去控制权，任由对方摆布我的喜怒哀乐。", scores: { "情绪主导": 5, "领地意识": 2 } }
+            ]},
+
+            // 第二部分：日常生活与潜意识
+            { type: 'single', tag: "PART 2 / 潜意识暗流", text: "收到对方发来的长篇大论（非吵架），你通常的回复习惯：", options: [
+                { text: "A. 故意晾一会儿再回，绝不显得自己太上赶着。", scores: { "情绪主导": 5, "魅力伪装": 2 } },
+                { text: "B. 立刻秒回，生怕晚一秒对方就会胡思乱想。", scores: { "安全感黑洞": 5, "托付心态": 2 } },
+                { text: "C. 快速扫一眼，只针对有价值的信息简短回复。", scores: { "抽离阈值": 5, "规则制定": 2 } },
+                { text: "D. 觉得打字太累，直接一个语音电话拨过去掌控节奏。", scores: { "规则制定": 5, "情绪主导": 2 } }
+            ]},
+            { type: 'multi', tag: "PART 2 / 潜意识暗流", text: "筹备一次重要的双人长途旅行，你的状态（多选）：", options: [
+                { text: "A. 大包大揽精确到小时，享受对方完全服从安排。", scores: { "规则制定": 4, "情绪主导": 2 } },
+                { text: "B. 极度焦虑，每天担心行程有变或对方不满意。", scores: { "情绪内耗": 4, "细节敏感": 2 } },
+                { text: "C. 纯粹跟随者，什么都不管只要对方安排好带我走。", scores: { "托付心态": 4, "底线退让": 2 } },
+                { text: "D. 故意留出大量空白，喜欢在未知中考验应变能力。", scores: { "狩猎直觉": 4, "抽离阈值": 2 } }
+            ]},
+            { type: 'single', tag: "PART 2 / 潜意识暗流", text: "正和重要人物聚会，伴侣发消息说“心情低落想你陪”：", options: [
+                { text: "A. 简短安抚手机静音，等局散了再处理TA的情绪。", scores: { "抽离阈值": 5, "规则制定": 2 } },
+                { text: "B. 瞬间无心社交，时刻盯手机甚至找借口提前离场。", scores: { "托付心态": 5, "分离焦虑": 2 } },
+                { text: "C. 觉得TA不懂事，心里默默扣分，事后严厉教育。", scores: { "规则制定": 5, "情绪主导": 2 } },
+                { text: "D. 巧妙利用间隙，打个简短但极具情绪价值的电话搞定。", scores: { "狩猎直觉": 5, "魅力伪装": 2 } }
+            ]},
+            { type: 'single', tag: "PART 2 / 潜意识暗流", text: "两人躺在床上准备入睡，对方突然无言地背过身去：", options: [
+                { text: "A. 从背后极其强势地一把捞进怀里强制身体接触。", scores: { "领地意识": 5, "边界入侵": 2 } },
+                { text: "B. 瞬间清醒心脏狂跳：TA是不是生我气了？", scores: { "细节敏感": 5, "情绪内耗": 2 } },
+                { text: "C. 无所谓，刚好我也需要自己舒服的睡眠空间。", scores: { "抽离阈值": 5 } },
+                { text: "D. 脑海里疯狂回放过去48小时的每一句话寻找线索。", scores: { "情绪内耗": 5, "细节敏感": 2 } }
+            ]},
+            { type: 'single', tag: "PART 2 / 潜意识暗流", text: "对方发朋友圈合照，只精修了自己把你拍得很难看：", options: [
+                { text: "A. 觉得TA臭美得有点可爱，只要对外宣告了我就行。", scores: { "情绪主导": 5, "领地意识": 2 } },
+                { text: "B. 极度不舒服，觉得TA潜意识不够在乎我或觉得我拿不出手。", scores: { "细节敏感": 5, "安全感黑洞": 2 } },
+                { text: "C. 半开玩笑施压要求删除，或自己去发一张TA的丑照。", scores: { "领地意识": 5, "边界入侵": 2 } },
+                { text: "D. 在评论区高情商自黑化解，但私下冷暴力TA半天。", scores: { "魅力伪装": 5, "抽离阈值": 2 } }
+            ]},
+            { type: 'multi', tag: "PART 2 / 潜意识暗流", text: "去新餐厅对点什么菜产生完全相反的分歧，你会（多选）：", options: [
+                { text: "A. 用极笃定语气和逻辑说服对方听自己的。", scores: { "规则制定": 4, "情绪主导": 2 } },
+                { text: "B. 叹口气，为了不破坏氛围妥协吃对方想吃的。", scores: { "底线退让": 4, "托付心态": 2 } },
+                { text: "C. 各点各的互不干涉，但这顿饭气氛降到冰点。", scores: { "抽离阈值": 4 } },
+                { text: "D. 表面妥协，但吃饭时故意挑刺暗示对方选错了。", scores: { "边界入侵": 4, "情绪内耗": 2 } }
+            ]},
+            { type: 'single', tag: "PART 2 / 潜意识暗流", text: "挑选极其重要的纪念日礼物时，你更倾向于送：", options: [
+                { text: "A. 能改变/塑造对方风格的东西（如香水衣物）。", scores: { "边界入侵": 5, "规则制定": 2 } },
+                { text: "B. 对方购物车躺了很久或随口提过一次舍不得买的。", scores: { "沉没成本": 5, "狩猎直觉": 2 } },
+                { text: "C. 极其昂贵用金钱价值直接砸晕对方彰显实力。", scores: { "魅力伪装": 5, "领地意识": 2 } },
+                { text: "D. 亲手制作充满回忆的手工件，试图用情感将对方套牢。", scores: { "领地意识": 5, "沉没成本": 2 } }
+            ]},
+            { type: 'single', tag: "PART 2 / 潜意识暗流", text: "当你生重病极度虚弱躺在床上时，你最希望伴侣：", options: [
+                { text: "A. 高效买药挂号解决实际问题，不需要黏腻废话。", scores: { "抽离阈值": 5, "规则制定": 2 } },
+                { text: "B. 什么实质性的都不用做，只要坐在床边眼神心疼握着手。", scores: { "安全感黑洞": 5, "托付心态": 2 } },
+                { text: "C. 表现出极度慌乱和担忧，让我深刻感觉TA不能没有我。", scores: { "情绪主导": 5, "魅力伪装": 2 } },
+                { text: "D. 严格按医嘱监督我，展现出绝对权威感让我安心。", scores: { "托付心态": 5, "底线退让": 2 } }
+            ]},
+            { type: 'single', tag: "PART 2 / 潜意识暗流", text: "伴侣在你面前真诚夸奖另一同性“很有才华魅力”：", options: [
+                { text: "A. 顺着话一起夸展现大度，甚至暗中贬低一下那个同性。", scores: { "魅力伪装": 5, "情绪主导": 2 } },
+                { text: "B. 心里立刻拉响警报，接下来的几天都在暗自全方位较劲。", scores: { "情绪内耗": 5, "安全感黑洞": 2 } },
+                { text: "C. 冷冷反问：“是吗？那么好你怎么不去找TA？”", scores: { "边界入侵": 5, "细节敏感": 2 } },
+                { text: "D. 毫无波澜，因为内心有绝对自信确信自己不可替代。", scores: { "抽离阈值": 5, "规则制定": 2 } }
+            ]},
+            { type: 'multi', tag: "PART 2 / 潜意识暗流", text: "和朋友谈论共同未来规划时，你下意识用的词（多选）：", options: [
+                { text: "A. “我打算…”（将伴侣自然纳入自己版图）。", scores: { "规则制定": 4, "领地意识": 2 } },
+                { text: "B. “我们准备…”（将两人视为绝对不可分割整体）。", scores: { "托付心态": 4, "沉没成本": 2 } },
+                { text: "C. “看TA的意思吧…”（习惯性让渡决策权）。", scores: { "底线退让": 4 } },
+                { text: "D. “先把眼前的日子过好吧…”（对长久性持保留态度）。", scores: { "抽离阈值": 4, "情绪内耗": 2 } }
+            ]},
+            { type: 'single', tag: "PART 2 / 潜意识暗流", text: "一起在街上散步，对方走路比你快很多把你落在了后面：", options: [
+                { text: "A. 停在原地冷冷看着TA，直到TA自己发现乖乖退回来。", scores: { "情绪主导": 5, "规则制定": 2 } },
+                { text: "B. 一边小跑追上去，一边委屈抱怨TA为什么不等我。", scores: { "细节敏感": 5, "分离焦虑": 2 } },
+                { text: "C. 觉得没面子，快步上前故意超越TA走得比TA还快。", scores: { "边界入侵": 5, "情绪内耗": 2 } },
+                { text: "D. 顺其自然慢慢走欣赏街景，觉得没必要时刻黏一起。", scores: { "抽离阈值": 5 } }
+            ]},
+            { type: 'single', tag: "PART 2 / 潜意识暗流", text: "面对伴侣非常宠爱但你实在喜欢不起来的宠物：", options: [
+                { text: "A. 爱屋及乌强迫自己去讨好宠物只为让伴侣开心。", scores: { "底线退让": 5, "托付心态": 2 } },
+                { text: "B. 明确表达不喜欢，并划定严格物理界限（如不进卧室）。", scores: { "规则制定": 5, "领地意识": 2 } },
+                { text: "C. 趁伴侣不在故意立规矩，试图彻底驯服宠物听自己的。", scores: { "边界入侵": 5, "情绪主导": 2 } },
+                { text: "D. 暗中吃醋，觉得伴侣分给宠物的爱太多试图争夺注意力。", scores: { "安全感黑洞": 5, "细节敏感": 2 } }
+            ]},
+            { type: 'single', tag: "PART 2 / 潜意识暗流", text: "去电影院看你期待但对方不感兴趣的电影，选座倾向：", options: [
+                { text: "A. 选绝佳观影位置沉浸在自己世界不管对方是否在睡觉。", scores: { "抽离阈值": 5, "规则制定": 2 } },
+                { text: "B. 选角落或最后一排，方便对方无聊时用肢体安抚TA。", scores: { "狩猎直觉": 5, "魅力伪装": 2 } },
+                { text: "C. 强行讲解剧情要求对方必须产生共鸣否则会生气。", scores: { "边界入侵": 5, "情绪主导": 2 } },
+                { text: "D. 觉得亏欠对方，整场都在小心观察脸色导致自己也没看好。", scores: { "情绪内耗": 5, "细节敏感": 2 } }
+            ]},
+            { type: 'single', tag: "PART 2 / 潜意识暗流", text: "早晨醒来睁眼发现对方正静静盯着你看，第一反应：", options: [
+                { text: "A. 极其自然凑过去索要早安吻享受被注视的感觉。", scores: { "魅力伪装": 5, "情绪主导": 2 } },
+                { text: "B. 下意识捂脸或转头，极度害怕刚醒的样子不够好看。", scores: { "安全感黑洞": 5, "细节敏感": 2 } },
+                { text: "C. 警惕地问一句：“怎么了？出什么事了？”", scores: { "情绪内耗": 5, "抽离阈值": 2 } },
+                { text: "D. 反客为主，用更具侵略性和审视的目光直直盯回去。", scores: { "边界入侵": 5, "领地意识": 2 } }
+            ]},
+            { type: 'multi', tag: "PART 2 / 潜意识暗流", text: "哪些微小细节会瞬间让你在心里扣分产生退意（多选）：", options: [
+                { text: "A. 对方在服务员或弱者面前展现不耐烦和傲慢态度。", scores: { "规则制定": 4 } },
+                { text: "B. 连续三次以上没有记住你随口提过的一个小喜好。", scores: { "细节敏感": 4, "安全感黑洞": 2 } },
+                { text: "C. 对方试图干涉你的穿衣风格或交友圈子。", scores: { "领地意识": 4, "抽离阈值": 2 } },
+                { text: "D. 遇小麻烦（迷路等）时情绪极度失控抱怨连连。", scores: { "抽离阈值": 4, "情绪主导": 2 } },
+                { text: "E. 对方太懂事顺从不管我做什么都不生气让我觉乏味。", scores: { "边界入侵": 4, "狩猎直觉": 2 } }
+            ]}
+        ];
+
+        // 状态存储：用数组记录每道题用户选中的索引列表，方便“返回上一题”时数据不乱
+        let userSelections = new Array(questions.length).fill(null).map(() => []);
+        let currentQIndex = 0;
+
+        // --- 核心页面路由 ---
+        function switchPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active-page'));
+            document.getElementById(pageId).classList.add('active-page');
+        }
+
+        function startTest() {
+            switchPage('page-question');
+            renderQuestion();
+        }
+
+        // --- 渲染题目逻辑 ---
+        function renderQuestion() {
+            if (currentQIndex >= questions.length) {
+                finishTest();
+                return;
+            }
+            const q = questions[currentQIndex];
+            const isMulti = q.type === 'multi';
+
+            // UI 更新
+            document.getElementById('q-current-num').innerText = String(currentQIndex + 1).padStart(2, '0');
+            document.getElementById('q-progress').style.width = ((currentQIndex + 1) / questions.length) * 100 + '%';
+            
+            // 标签与返回按钮逻辑
+            let tagHTML = q.tag;
+            if(isMulti) tagHTML += '<span class="multi-tag">多选</span>';
+            document.getElementById('q-tag').innerHTML = tagHTML;
+            document.getElementById('q-text').innerText = q.text;
+
+            const backBtn = document.getElementById('btn-back');
+            if(currentQIndex === 0) backBtn.classList.add('hidden');
+            else backBtn.classList.remove('hidden');
+            
+            const optionsBox = document.getElementById('q-options');
+            const confirmBtn = document.getElementById('btn-confirm');
+            optionsBox.innerHTML = '';
+            
+            // 处理确认按钮显隐
+            if(isMulti) confirmBtn.classList.add('show');
+            else confirmBtn.classList.remove('show');
+
+            // 恢复之前选择的状态（如果是点返回上一题回来的）
+            let currentAns = userSelections[currentQIndex];
+
+            q.options.forEach((opt, idx) => {
+                const div = document.createElement('div');
+                div.className = 'option-card';
+                if(currentAns.includes(idx)) div.classList.add('active'); // 回显
+                div.innerText = opt.text;
+                
+                div.onclick = function() {
+                    if (!isMulti) {
+                        // 单选逻辑
+                        Array.from(optionsBox.children).forEach(c => c.classList.remove('active'));
+                        this.classList.add('active');
+                        userSelections[currentQIndex] = [idx];
+                        
+                        setTimeout(() => {
+                            document.querySelector('.q-container').style.opacity = '0';
+                            setTimeout(() => {
+                                currentQIndex++; renderQuestion();
+                                document.querySelector('.q-container').style.opacity = '1';
+                            }, 300);
+                        }, 200);
+                    } else {
+                        // 多选逻辑
+                        this.classList.toggle('active');
+                        if (this.classList.contains('active')) {
+                            if (!currentAns.includes(idx)) currentAns.push(idx);
+                        } else {
+                            currentAns = currentAns.filter(i => i !== idx);
+                        }
+                        userSelections[currentQIndex] = currentAns;
+                    }
+                };
+                optionsBox.appendChild(div);
+            });
+        }
+
+        // --- 多选确认与返回逻辑 ---
+        function confirmMultiSelect() {
+            if(userSelections[currentQIndex].length === 0) return; // 未选择不让走
+            document.querySelector('.q-container').style.opacity = '0';
+            setTimeout(() => {
+                currentQIndex++; renderQuestion();
+                document.querySelector('.q-container').style.opacity = '1';
+            }, 300);
+        }
+
+        function goBack() {
+            if (currentQIndex > 0) {
+                document.querySelector('.q-container').style.opacity = '0';
+                setTimeout(() => {
+                    currentQIndex--; renderQuestion();
+                    document.querySelector('.q-container').style.opacity = '1';
+                }, 300);
+            }
+        }
+
+        // --- 全局计分系统与交卷 ---
+        function finishTest() {
+            switchPage('page-loading');
+            let count = 0;
+            const txt = document.getElementById('loading-txt');
+            const phrases = ["ANALYZING EMOTIONS...", "MAPPING TOPOLOGY...", "GENERATING REPORT..."];
+            const interval = setInterval(() => {
+                txt.innerText = phrases[count % 3]; count++;
+                if(count > 4) { clearInterval(interval); generateResult(); }
+            }, 600);
+        }
+
+        function generateResult() {
+            // 每次生成结果时重置，依据所有选择轨迹重新结算，保证无论怎么倒退重选绝对准确
+            let dimensions = { "领地意识": 0, "情绪主导": 0, "边界入侵": 0, "抽离阈值": 0, "魅力伪装": 0, "狩猎直觉": 0, "规则制定": 0, "分离焦虑": 0, "情绪内耗": 0, "底线退让": 0, "安全感黑洞": 0, "沉没成本": 0, "细节敏感": 0, "托付心态": 0 };
+            
+            for(let i=0; i<questions.length; i++) {
+                let ansArray = userSelections[i];
+                ansArray.forEach(optIdx => {
+                    let scores = questions[i].options[optIdx].scores;
+                    for(let key in scores) { dimensions[key] += scores[key] * 1.5; } // 缩放因子以适配雷达图大小
+                });
+            }
+
+            switchPage('page-result');
+            
+            // 结果判定逻辑
+            let hunter = dimensions["领地意识"] + dimensions["情绪主导"] + dimensions["边界入侵"] + dimensions["抽离阈值"] + dimensions["魅力伪装"] + dimensions["狩猎直觉"] + dimensions["规则制定"];
+            let prey = dimensions["分离焦虑"] + dimensions["情绪内耗"] + dimensions["底线退让"] + dimensions["安全感黑洞"] + dimensions["沉没成本"] + dimensions["细节敏感"] + dimensions["托付心态"];
+            
+            let tag = "清醒的<span>旁观者</span>";
+            let desc = "既不想征服谁，也懒得依附谁。你有着极致的防御壁垒，保护了自己免受伤害，但也挡住了所有惊喜。";
+            
+            if(hunter > prey * 1.2 && dimensions["抽离阈值"] > 15) { 
+                tag = "冷血的<span>赏金猎人</span>"; 
+                desc = "你在亲密关系里像个没有感情的KPI杀手。比起被爱，你更享受降服的快感。顶级猎手，绝不回头。"; 
+            } else if(prey > hunter * 1.2 && dimensions["情绪内耗"] > 15) { 
+                tag = "纯白<span>献祭者</span>"; 
+                desc = "一谈恋爱智商清零。你以为毫无保留的付出能换来偏爱，其实只换来了对方的有恃无恐。"; 
+            } else if(hunter > 40 && prey > 40) { 
+                tag = "伪装成猎手的<span>重度依赖症</span>"; 
+                desc = "你表面是无坚不摧的控场王，但一旦拉开距离，内心的不安全感就会疯狂滋长，用傲慢掩饰分离焦虑。"; 
+            } else if(dimensions["魅力伪装"] > 15 && dimensions["安全感黑洞"] > 15) {
+                tag = "易碎的<span>完美情人</span>";
+                desc = "光芒万丈极具吸引力，在感情里却总是卑微地自我怀疑。美丽掩盖不住渴求被偏爱的灵魂。";
+            } else if(dimensions["边界入侵"] > 15 && dimensions["沉没成本"] > 15) {
+                tag = "拉扯上瘾的<span>赌徒</span>";
+                desc = "平淡安稳让你觉得索然无味，你需要忽冷忽热的试探。爱的不仅是人，更是失控边缘游走的刺激感。";
+            }
+
+            document.getElementById('final-tag-title').innerHTML = tag;
+            document.getElementById('final-tag-desc').innerText = desc;
+
+            // 渲染动态雷达图
+            const chart = echarts.init(document.getElementById('radar-chart'));
+            chart.setOption({
+                radar: {
+                    indicator: Object.keys(dimensions).map(k => ({name: k, max: 45})),
+                    shape: 'polygon', splitNumber: 4,
+                    axisName: { color: '#888', fontSize: 10 },
+                    splitLine: { lineStyle: { color: ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.1)', 'rgba(255,255,255,0.15)', 'rgba(255,255,255,0.2)'].reverse() } },
+                    splitArea: { show: false }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } }
+                },
+                series: [{
+                    type: 'radar',
+                    data: [{
+                        value: Object.values(dimensions), name: '测试结果',
+                        itemStyle: { color: '#8b0000' }, lineStyle: { color: 'rgba(139,0,0,0.8)' },
+                        areaStyle: { color: new echarts.graphic.RadialGradient(0.5, 0.5, 1, [{ color: 'rgba(139,0,0,0.4)', offset: 0 }, { color: 'rgba(25,25,112,0.4)', offset: 1 }]) }
+                    }]
+                }]
+            });
+        }
+
+        // --- 密钥核销动效 ---
+        function verifyKey() {
+            const btn = document.getElementById('verify-btn');
+            const input = document.getElementById('secret-key');
+            if(input.value !== 'TEST-8888') {
+                btn.innerText = '密钥无效或不存在'; btn.style.background = '#333';
+                setTimeout(() => { btn.innerText = '解密档案'; btn.style.background = 'linear-gradient(135deg, #8b0000 0%, #4a0000 100%)'; }, 1000);
+                return;
+            }
+            btn.innerText = '系统解密中...'; btn.style.pointerEvents = 'none'; btn.style.background = '#4a0000';
+            setTimeout(() => {
+                btn.innerText = '权限已核准'; btn.style.background = 'rgba(25,25,112,0.9)';
+                setTimeout(() => {
+                    document.getElementById('paywall').style.opacity = '0';
+                    document.getElementById('real-result').style.opacity = '1';
+                    document.getElementById('real-result').style.transform = 'translateY(0)';
+                    setTimeout(() => { document.getElementById('paywall').style.display = 'none'; }, 1500);
+                }, 500);
+            }, 1500);
+        }
+    </script>
+</body>
+</html>
