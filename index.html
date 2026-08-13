@@ -159,11 +159,11 @@
 
     <script>
         // ==========================================
-        // 初始化 Supabase 凭证
+        // 初始化 Supabase 凭证 (使用 supabaseClient 避免冲突)
         // ==========================================
         const SUPABASE_URL = 'https://cmkigbfwqvdhthbztjas.supabase.co'; 
         const SUPABASE_ANON_KEY = 'sb_publishable_dtYvAIOdBxZgbWID-33tWg_1TIxn4OQ';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // 全局变量，记录当前有效且未使用的邀请码
         let currentInviteCode = '';
@@ -365,7 +365,7 @@
             document.getElementById(pageId).classList.add('active-page');
         }
 
-        // --- 验证邀请码核心逻辑 ---
+        // --- 验证邀请码核心逻辑 (已将 supabase 改为 supabaseClient) ---
         async function verifyKey() {
             const btn = document.getElementById('verify-btn');
             const inputCode = document.getElementById('secret-key').value.trim();
@@ -382,7 +382,7 @@
 
             try {
                 // 查询 Supabase 数据库
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('invites')
                     .select('*')
                     .eq('code', inputCode)
@@ -538,7 +538,7 @@
             }, 600);
         }
 
-        // --- 生成、上传并保存结果 ---
+        // --- 生成、上传并保存结果 (已将 supabase 改为 supabaseClient) ---
         async function generateResult() {
             let dimensions = { "领地意识": 0, "情绪主导": 0, "边界入侵": 0, "抽离阈值": 0, "魅力伪装": 0, "狩猎直觉": 0, "规则制定": 0, "分离焦虑": 0, "情绪内耗": 0, "底线退让": 0, "安全感黑洞": 0, "沉没成本": 0, "细节敏感": 0, "托付心态": 0 };
             
@@ -582,7 +582,7 @@
             // 如果是通过有效邀请码进来的，则上传结果并标记为已使用
             if (currentInviteCode) {
                 try {
-                    await supabase
+                    await supabaseClient
                         .from('invites')
                         .update({ 
                             is_used: true, 
