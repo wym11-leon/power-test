@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>权力拓扑：隐性应力法则测试 (完整版)</title>
+    <!-- 引入 ECharts -->
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <!-- 引入 Supabase JS 客户端 -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         /* --- 全局基础与暗房氛围 --- */
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -42,11 +45,10 @@
         .start-btn:hover { background: rgba(139,0,0,0.1); border-color: #8b0000; }
         @keyframes pulse { 0%, 100% { border-color: rgba(255,255,255,0.1); } 50% { border-color: rgba(139,0,0,0.4); } }
 
-        /* --- 答题页 (新增返回按钮与多选样式) --- */
+        /* --- 答题页 --- */
         .q-container { max-width: 500px; width: 100%; height: 100%; padding: 40px 30px; z-index: 10; display: flex; flex-direction: column; }
         .progress-header { width: 100%; display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: #666; margin-bottom: 30px; position: relative; }
         
-        /* 返回上一题按钮 */
         .back-btn { 
             position: absolute; left: 0; top: -35px; color: #888; font-size: 0.85rem; 
             cursor: pointer; letter-spacing: 1px; display: flex; align-items: center; transition: 0.3s;
@@ -66,7 +68,6 @@
         .option-card:hover { background: rgba(255,255,255,0.06); }
         .option-card.active { background: rgba(139,0,0,0.1); border-color: #8b0000; color: #fff; transform: translateX(4px); box-shadow: inset 0 0 15px rgba(139,0,0,0.2); }
 
-        /* 多选题确认按钮 */
         .confirm-btn {
             background: linear-gradient(135deg, #8b0000 0%, #4a0000 100%); color: #fff; border: none; padding: 14px 0; width: 100%; font-size: 1rem; border-radius: 4px; cursor: pointer; letter-spacing: 4px; transition: 0.3s; margin-top: 10px; display: none;
         }
@@ -76,11 +77,12 @@
         /* --- 解析与结果页 --- */
         .loading-text { font-family: 'Courier New', monospace; font-size: 1.2rem; color: #8b0000; letter-spacing: 3px; z-index: 10; text-align: center; }
         .result-container { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; padding-top: 30px; z-index: 10; }
-        .tag-name { font-size: 2rem; font-weight: 300; color: #fff; margin-bottom: 10px; text-shadow: 0 0 10px rgba(255,255,255,0.2); }
+        .tag-name { font-size: 2rem; font-weight: 300; color: #fff; margin-bottom: 10px; text-shadow: 0 0 10px rgba(255,255,255,0.2); text-align: center; }
         .tag-name span { color: #8b0000; font-weight: 600; }
         .short-desc { font-size: 0.85rem; color: #888; line-height: 1.6; max-width: 320px; text-align: center; }
         #radar-chart { width: 100%; max-width: 400px; height: 350px; margin-top: 10px; }
         
+        /* 付费/邀请码屏障 */
         .paywall-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background-color: rgba(5,5,5,0.7);
@@ -106,7 +108,17 @@
             <div class="description-box">
                 <p>亲密关系并非静态的避风港，而是一个充满拉扯的动态力学系统。本系统通过30组极端状态模拟，精准测算你的情绪阈值与精神内耗极值。</p>
             </div>
-            <button class="start-btn" onclick="startTest()">初始化测算模型</button>
+            <!-- 点击后进入邀请码页面 -->
+            <button class="start-btn" onclick="switchPage('page-invite')">初始化测算模型</button>
+        </div>
+    </div>
+
+    <!-- 1.5. 邀请码验证页 -->
+    <div id="page-invite" class="page">
+        <div class="paywall-overlay" id="paywall">
+            <div class="paywall-text">核心系统已锁定<span>需要专属邀请码</span></div>
+            <input type="text" class="secret-input" id="secret-key" placeholder="输入邀请码" autocomplete="off">
+            <button class="confirm-btn" style="display:block; width:280px;" id="verify-btn" onclick="verifyKey()">验证并进入</button>
         </div>
     </div>
 
@@ -136,25 +148,28 @@
         <div style="color: #666; font-size: 0.8rem; margin-top: 10px; letter-spacing: 1px;">正在深度解析潜意识应力轨迹</div>
     </div>
 
-    <!-- 4. 结果页 (包含马赛克锁) -->
+    <!-- 4. 结果页 -->
     <div id="page-result" class="page">
-        <div class="result-container" id="real-result" style="opacity: 0; transform: translateY(20px); transition: 1s;">
+        <div class="result-container" id="real-result" style="opacity: 1; transform: translateY(0); transition: 1s;">
             <div class="tag-name" id="final-tag-title">计算中...</div>
             <div class="short-desc" id="final-tag-desc">计算中...</div>
             <div id="radar-chart"></div>
         </div>
-        <!-- 密钥壁垒 -->
-        <div class="paywall-overlay" id="paywall">
-            <div class="paywall-text">核心应力数据已封存<span>Data Encrypted</span></div>
-            <input type="text" class="secret-input" id="secret-key" placeholder="输入专属密钥" maxlength="16" autocomplete="off" value="TEST-8888">
-            <button class="confirm-btn" style="display:block; width:280px;" id="verify-btn" onclick="verifyKey()">解密档案</button>
-        </div>
     </div>
 
     <script>
-        // --- 完整 30 题核心题库 (包含单选与多选，附带隐秘权重) ---
+        // ==========================================
+        // 初始化 Supabase 凭证
+        // ==========================================
+        const SUPABASE_URL = 'https://cmkigbfwqvdhthbztjas.supabase.co'; 
+        const SUPABASE_ANON_KEY = 'sb_publishable_dtYvAIOdBxZgbWID-33tWg_1TIxn4OQ';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // 全局变量，记录当前有效且未使用的邀请码
+        let currentInviteCode = '';
+
+        // --- 完整 30 题核心题库 ---
         const questions = [
-            // 第一部分：极限场景测试
             { type: 'single', tag: "PART 1 / 极限边界", text: "发现伴侣和一个极具魅力的异性有轻微的言语暧昧，你会：", options: [
                 { text: "A. 事后用更冷酷的姿态和更高价值碾压对方。", scores: { "魅力伪装": 5, "情绪主导": 2 } },
                 { text: "B. 愤怒且痛苦地当面对质，需要对方反复保证才能翻篇。", scores: { "安全感黑洞": 5, "情绪内耗": 2 } },
@@ -341,7 +356,6 @@
             ]}
         ];
 
-        // 状态存储：用数组记录每道题用户选中的索引列表，方便“返回上一题”时数据不乱
         let userSelections = new Array(questions.length).fill(null).map(() => []);
         let currentQIndex = 0;
 
@@ -349,6 +363,81 @@
         function switchPage(pageId) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active-page'));
             document.getElementById(pageId).classList.add('active-page');
+        }
+
+        // --- 验证邀请码核心逻辑 ---
+        async function verifyKey() {
+            const btn = document.getElementById('verify-btn');
+            const inputCode = document.getElementById('secret-key').value.trim();
+
+            if (!inputCode) {
+                btn.innerText = '请输入邀请码';
+                setTimeout(() => { btn.innerText = '验证并进入'; }, 1000);
+                return;
+            }
+
+            btn.innerText = '云端核验中...'; 
+            btn.style.pointerEvents = 'none'; 
+            btn.style.background = '#4a0000';
+
+            try {
+                // 查询 Supabase 数据库
+                const { data, error } = await supabase
+                    .from('invites')
+                    .select('*')
+                    .eq('code', inputCode)
+                    .single();
+
+                if (error || !data) {
+                    btn.innerText = '邀请码无效或不存在'; 
+                    btn.style.background = '#333';
+                    setTimeout(() => { 
+                        btn.innerText = '验证并进入'; 
+                        btn.style.background = 'linear-gradient(135deg, #8b0000 0%, #4a0000 100%)'; 
+                        btn.style.pointerEvents = 'auto';
+                    }, 1500);
+                    return;
+                }
+
+                currentInviteCode = inputCode; 
+
+                if (data.is_used) {
+                    // 逻辑分支 A：邀请码已使用，直接调取历史数据
+                    btn.innerText = '读取历史档案...';
+                    setTimeout(() => {
+                        let savedData = data.result;
+                        if (typeof savedData === 'string') {
+                            try { savedData = JSON.parse(savedData); } 
+                            catch (e) { console.error("JSON parse error:", e); }
+                        }
+                        renderSavedResult(savedData);
+                        
+                        // 恢复按钮状态
+                        btn.style.pointerEvents = 'auto';
+                        btn.innerText = '验证并进入';
+                        btn.style.background = 'linear-gradient(135deg, #8b0000 0%, #4a0000 100%)';
+                    }, 1000);
+                } else {
+                    // 逻辑分支 B：邀请码未使用，进入答题环节
+                    btn.innerText = '权限已核准'; 
+                    btn.style.background = 'rgba(25,25,112,0.9)';
+                    setTimeout(() => {
+                        btn.style.pointerEvents = 'auto'; 
+                        btn.innerText = '验证并进入';
+                        btn.style.background = 'linear-gradient(135deg, #8b0000 0%, #4a0000 100%)'; 
+                        document.getElementById('secret-key').value = ''; 
+                        startTest(); 
+                    }, 1000);
+                }
+            } catch (err) {
+                console.error("Database connection error:", err);
+                btn.innerText = '网络连接异常';
+                setTimeout(() => {
+                    btn.style.pointerEvents = 'auto';
+                    btn.innerText = '验证并进入';
+                    btn.style.background = 'linear-gradient(135deg, #8b0000 0%, #4a0000 100%)';
+                }, 1500);
+            }
         }
 
         function startTest() {
@@ -365,11 +454,9 @@
             const q = questions[currentQIndex];
             const isMulti = q.type === 'multi';
 
-            // UI 更新
             document.getElementById('q-current-num').innerText = String(currentQIndex + 1).padStart(2, '0');
             document.getElementById('q-progress').style.width = ((currentQIndex + 1) / questions.length) * 100 + '%';
             
-            // 标签与返回按钮逻辑
             let tagHTML = q.tag;
             if(isMulti) tagHTML += '<span class="multi-tag">多选</span>';
             document.getElementById('q-tag').innerHTML = tagHTML;
@@ -383,22 +470,19 @@
             const confirmBtn = document.getElementById('btn-confirm');
             optionsBox.innerHTML = '';
             
-            // 处理确认按钮显隐
             if(isMulti) confirmBtn.classList.add('show');
             else confirmBtn.classList.remove('show');
 
-            // 恢复之前选择的状态（如果是点返回上一题回来的）
             let currentAns = userSelections[currentQIndex];
 
             q.options.forEach((opt, idx) => {
                 const div = document.createElement('div');
                 div.className = 'option-card';
-                if(currentAns.includes(idx)) div.classList.add('active'); // 回显
+                if(currentAns.includes(idx)) div.classList.add('active'); 
                 div.innerText = opt.text;
                 
                 div.onclick = function() {
                     if (!isMulti) {
-                        // 单选逻辑
                         Array.from(optionsBox.children).forEach(c => c.classList.remove('active'));
                         this.classList.add('active');
                         userSelections[currentQIndex] = [idx];
@@ -411,7 +495,6 @@
                             }, 300);
                         }, 200);
                     } else {
-                        // 多选逻辑
                         this.classList.toggle('active');
                         if (this.classList.contains('active')) {
                             if (!currentAns.includes(idx)) currentAns.push(idx);
@@ -425,9 +508,8 @@
             });
         }
 
-        // --- 多选确认与返回逻辑 ---
         function confirmMultiSelect() {
-            if(userSelections[currentQIndex].length === 0) return; // 未选择不让走
+            if(userSelections[currentQIndex].length === 0) return; 
             document.querySelector('.q-container').style.opacity = '0';
             setTimeout(() => {
                 currentQIndex++; renderQuestion();
@@ -445,7 +527,6 @@
             }
         }
 
-        // --- 全局计分系统与交卷 ---
         function finishTest() {
             switchPage('page-loading');
             let count = 0;
@@ -457,21 +538,18 @@
             }, 600);
         }
 
-        function generateResult() {
-            // 每次生成结果时重置，依据所有选择轨迹重新结算，保证无论怎么倒退重选绝对准确
+        // --- 生成、上传并保存结果 ---
+        async function generateResult() {
             let dimensions = { "领地意识": 0, "情绪主导": 0, "边界入侵": 0, "抽离阈值": 0, "魅力伪装": 0, "狩猎直觉": 0, "规则制定": 0, "分离焦虑": 0, "情绪内耗": 0, "底线退让": 0, "安全感黑洞": 0, "沉没成本": 0, "细节敏感": 0, "托付心态": 0 };
             
             for(let i=0; i<questions.length; i++) {
                 let ansArray = userSelections[i];
                 ansArray.forEach(optIdx => {
                     let scores = questions[i].options[optIdx].scores;
-                    for(let key in scores) { dimensions[key] += scores[key] * 1.5; } // 缩放因子以适配雷达图大小
+                    for(let key in scores) { dimensions[key] += scores[key] * 1.5; } 
                 });
             }
 
-            switchPage('page-result');
-            
-            // 结果判定逻辑
             let hunter = dimensions["领地意识"] + dimensions["情绪主导"] + dimensions["边界入侵"] + dimensions["抽离阈值"] + dimensions["魅力伪装"] + dimensions["狩猎直觉"] + dimensions["规则制定"];
             let prey = dimensions["分离焦虑"] + dimensions["情绪内耗"] + dimensions["底线退让"] + dimensions["安全感黑洞"] + dimensions["沉没成本"] + dimensions["细节敏感"] + dimensions["托付心态"];
             
@@ -495,14 +573,41 @@
                 desc = "平淡安稳让你觉得索然无味，你需要忽冷忽热的试探。爱的不仅是人，更是失控边缘游走的刺激感。";
             }
 
-            document.getElementById('final-tag-title').innerHTML = tag;
-            document.getElementById('final-tag-desc').innerText = desc;
+            const resultDataToSave = {
+                dimensions: dimensions,
+                tag: tag,
+                desc: desc
+            };
 
-            // 渲染动态雷达图
+            // 如果是通过有效邀请码进来的，则上传结果并标记为已使用
+            if (currentInviteCode) {
+                try {
+                    await supabase
+                        .from('invites')
+                        .update({ 
+                            is_used: true, 
+                            result: JSON.stringify(resultDataToSave) 
+                        })
+                        .eq('code', currentInviteCode);
+                } catch (err) {
+                    console.error("数据上传失败:", err);
+                }
+            }
+
+            renderSavedResult(resultDataToSave);
+        }
+
+        // --- 渲染雷达图与结果视图 ---
+        function renderSavedResult(data) {
+            switchPage('page-result');
+            
+            document.getElementById('final-tag-title').innerHTML = data.tag;
+            document.getElementById('final-tag-desc').innerText = data.desc;
+
             const chart = echarts.init(document.getElementById('radar-chart'));
             chart.setOption({
                 radar: {
-                    indicator: Object.keys(dimensions).map(k => ({name: k, max: 45})),
+                    indicator: Object.keys(data.dimensions).map(k => ({name: k, max: 45})),
                     shape: 'polygon', splitNumber: 4,
                     axisName: { color: '#888', fontSize: 10 },
                     splitLine: { lineStyle: { color: ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.1)', 'rgba(255,255,255,0.15)', 'rgba(255,255,255,0.2)'].reverse() } },
@@ -511,33 +616,12 @@
                 series: [{
                     type: 'radar',
                     data: [{
-                        value: Object.values(dimensions), name: '测试结果',
+                        value: Object.values(data.dimensions), name: '测试结果',
                         itemStyle: { color: '#8b0000' }, lineStyle: { color: 'rgba(139,0,0,0.8)' },
                         areaStyle: { color: new echarts.graphic.RadialGradient(0.5, 0.5, 1, [{ color: 'rgba(139,0,0,0.4)', offset: 0 }, { color: 'rgba(25,25,112,0.4)', offset: 1 }]) }
                     }]
                 }]
             });
-        }
-
-        // --- 密钥核销动效 ---
-        function verifyKey() {
-            const btn = document.getElementById('verify-btn');
-            const input = document.getElementById('secret-key');
-            if(input.value !== 'TEST-8888') {
-                btn.innerText = '密钥无效或不存在'; btn.style.background = '#333';
-                setTimeout(() => { btn.innerText = '解密档案'; btn.style.background = 'linear-gradient(135deg, #8b0000 0%, #4a0000 100%)'; }, 1000);
-                return;
-            }
-            btn.innerText = '系统解密中...'; btn.style.pointerEvents = 'none'; btn.style.background = '#4a0000';
-            setTimeout(() => {
-                btn.innerText = '权限已核准'; btn.style.background = 'rgba(25,25,112,0.9)';
-                setTimeout(() => {
-                    document.getElementById('paywall').style.opacity = '0';
-                    document.getElementById('real-result').style.opacity = '1';
-                    document.getElementById('real-result').style.transform = 'translateY(0)';
-                    setTimeout(() => { document.getElementById('paywall').style.display = 'none'; }, 1500);
-                }, 500);
-            }, 1500);
         }
     </script>
 </body>
